@@ -17,10 +17,17 @@
 
 package com.tencent.tsf.femas.service.registry;
 
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.nacos.shaded.io.grpc.internal.JsonUtil;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.tencent.tsf.femas.common.constant.FemasConstant;
 import com.tencent.tsf.femas.common.entity.EndpointStatus;
 import com.tencent.tsf.femas.common.entity.Service;
 import com.tencent.tsf.femas.common.entity.ServiceInstance;
+import com.tencent.tsf.femas.common.httpclient.HttpClientResponse;
 import com.tencent.tsf.femas.common.serialize.JSONSerializer;
 import com.tencent.tsf.femas.common.util.HttpResult;
 import com.tencent.tsf.femas.common.util.StringUtils;
@@ -36,6 +43,7 @@ import com.tencent.tsf.femas.entity.registry.nacos.NacosService;
 
 import java.util.*;
 
+import lombok.Data;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -52,23 +60,62 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
      * nacos 版本1.4.1
      * https://nacos.io/zh-cn/docs/open-api.html
      */
-    private final static String CLUSTER_LIST = "/nacos/v1/ns/operator/servers";
+//    private final static String CLUSTER_LIST = "/nacos/v1/ns/operator/servers";
+    private final static String CLUSTER_LIST = "/nacos/v2/core/cluster/node/list";
     private final static String FETCH_SERVICE_LIST = "/nacos/v1/ns/catalog/services";
     private final static String FETCH_SERVICE_INSTANCE_LIST = "/nacos/v1/ns/catalog/instances";
     private final static String NAMESPCE_URL = "/nacos/v1/console/namespaces";
+    private final static String LOGIN_URL = "/nacos/v1/auth/login";
+
+    public static void main(String[] args) {
+        String str="{\"accessToken\":\"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJuYWNvcyIsImV4cCI6MTYwNTYyOTE2Nn0.2TogGhhr11_vLEjqKko1HJHUJEmsPuCxkur-CfNojDo\",\"tokenTtl\":18000,\"globalAdmin\":true}";
+        HttpResult<String> result=JSONSerializer.deserializeStr(HttpResult.class,str);
+        System.out.println(result.getData());
+        String str2="{\"code\":0,\"message\":\"success\",\"data\":[{\"ip\":\"10.128.164.35\",\"port\":8848,\"state\":\"UP\",\"extendInfo\":{\"lastRefreshTime\":1664521263623,\"raftMetaData\":{\"metaDataMap\":{\"naming_instance_metadata\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12},\"naming_persistent_service_v2\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12},\"naming_service_metadata\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12}}},\"raftPort\":\"7848\",\"readyToUpgrade\":true,\"version\":\"2.1.0\"},\"address\":\"10.128.164.35:8848\",\"failAccessCnt\":0,\"abilities\":{\"remoteAbility\":{\"supportRemoteConnection\":true},\"configAbility\":{\"supportRemoteMetrics\":false},\"namingAbility\":{\"supportJraft\":true}}}]}";
+        HttpResult<String> result2=JSONSerializer.deserializeStr(HttpResult.class,str);
+        System.out.println(result.getData());
+        System.out.println(JSONSerializer.deserializeStr2List(NacosServer.Server.class, result.getData()));
+        String str1="[{\"ip\":\"10.128.164.35\",\"port\":8848,\"state\":\"UP\",\"extendInfo\":{\"lastRefreshTime\":1664521263623,\"raftMetaData\":{\"metaDataMap\":{\"naming_instance_metadata\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12},\"naming_persistent_service_v2\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12},\"naming_service_metadata\":{\"leader\":\"10.128.164.35:7848\",\"raftGroupMember\":[\"10.128.164.35:7848\"],\"term\":12}}},\"raftPort\":\"7848\",\"readyToUpgrade\":true,\"version\":\"2.1.0\"},\"address\":\"10.128.164.35:8848\",\"failAccessCnt\":0,\"abilities\":{\"remoteAbility\":{\"supportRemoteConnection\":true},\"configAbility\":{\"supportRemoteMetrics\":false},\"namingAbility\":{\"supportJraft\":true}}}]";
+        System.out.println(JSONSerializer.deserializeStr2List(NacosServer.Server.class, str1));
+    }
+
+    private String getToken(RegistryConfig config) {
+        String url = selectOne(config);
+        Map<String, Object> queryMap = new HashMap<>();
+        queryMap.put("username", config.getUsername());
+        queryMap.put("password", config.getPassword());
+        try {
+            //{"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJuYWNvcyIsImV4cCI6MTYwNTYyOTE2Nn0.2TogGhhr11_vLEjqKko1HJHUJEmsPuCxkur-CfNojDo","tokenTtl":18000,"globalAdmin":true}
+            HttpResult<String> result = httpClient.post(url.concat(LOGIN_URL), null, queryMap, null);
+            TokenRes tokenRes = JSONObject.parseObject(result.getData(),TokenRes.class);;
+            assert tokenRes != null;
+            return tokenRes.getAccessToken();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
+    @Data
+    private static class TokenRes{
+      private String accessToken;
+      private Long tokenTtl;
+      private Boolean globalAdmin;
+    }
+
 
     @Override
     public List<ClusterServer> clusterServers(RegistryConfig config) {
         String url = selectOne(config);
         try {
-            HttpResult<String> result = httpClient.get(url.concat(CLUSTER_LIST), null, null);
+            HttpResult<String> result = httpClient.get(url.concat(CLUSTER_LIST).concat("?accessToken=").concat(getToken(config)), null, null);
             NacosServer nacosServer = null;
             Map map = null;
             if (HttpStatus.SC_OK == NumberUtils.toInt(result.getCode())) {
                 nacosServer = JSONSerializer.deserializeStr(NacosServer.class, result.getData());
             }
             if (nacosServer != null) {
-                List<NacosServer.Server> serverList = nacosServer.getServers();
+                List<NacosServer.Server> serverList = JSONSerializer.deserializeStr2List(NacosServer.Server.class,JSONObject.toJSONString(nacosServer.getData()));
                 List<ClusterServer> clusterServers = new ArrayList<>(serverList.size());
                 serverList.stream().forEach(s -> {
                     ClusterServer server = new ClusterServer();
@@ -86,7 +133,7 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
                         String leaderIp = leader.split(":")[0];
                         String leaderPort = leader.split(":")[1];
                         if (leaderIp.equalsIgnoreCase(s.getIp())
-                                && leaderPort.equalsIgnoreCase(s.getExtendInfo() != null ? s.getExtendInfo().getRaftPort(): "")) {
+                                && leaderPort.equalsIgnoreCase(s.getExtendInfo() != null ? s.getExtendInfo().getRaftPort() : "")) {
                             server.setClusterRole("leader");
                         }
                     }
@@ -118,6 +165,7 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
         registryPageService.setPageSize(registryInstanceParam.getPageSize());
         try {
             Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("accessToken", getToken(config));
             queryMap.put("pageNo", registryInstanceParam.getPageNo());
             queryMap.put("pageSize", registryInstanceParam.getPageSize());
             queryMap.put("namespaceId", registryInstanceParam.getNamespaceId());
@@ -146,16 +194,17 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
 
     @Override
     public RegistryPageService fetchNamespaceServices(RegistryConfig config, String namespaceId, int pageNo,
-            int pageSize) {
+                                                      int pageSize) {
         return null;
     }
 
     @Override
     public List<ServiceInstance> fetchServiceInstances(RegistryConfig config,
-            RegistryInstanceParam registryInstanceParam) {
+                                                       RegistryInstanceParam registryInstanceParam) {
         String url = selectOne(config);
         try {
             Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("accessToken", getToken(config));
             queryMap.put("serviceName", registryInstanceParam.getServiceName());
             queryMap.put("clusterName", "DEFAULT");
             queryMap.put("pageNo", 1);
@@ -176,9 +225,9 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
                     instance.setPort(NumberUtils.toInt(i.getPort()));
                     String nacosInstanceId = i.getInstanceId();
                     //某些版本的nacos返回的字段不包含InstanceId，使用femas的InstanceId兜底
-                    if(StringUtils.isNotBlank(nacosInstanceId)){
+                    if (StringUtils.isNotBlank(nacosInstanceId)) {
                         instance.setId(nacosInstanceId);
-                    }else{
+                    } else {
                         String femasInstanceId = i.getMetadata().get(FemasConstant.FEMAS_META_INSTANCE_ID_KEY);
                         instance.setId(femasInstanceId);
                     }
@@ -208,7 +257,7 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
             queryMap.put("customNamespaceId", namespace.getNamespaceId());
             queryMap.put("namespaceName", namespace.getName());
             queryMap.put("namespaceDesc", namespace.getDesc());
-            HttpResult<String> result = httpClient.post(url.concat(NAMESPCE_URL), null, queryMap, null);
+            HttpResult<String> result = httpClient.post(url.concat(NAMESPCE_URL).concat("?accessToken=").concat(getToken(config)), null, queryMap, null);
             return Boolean.TRUE.toString().equals(result.getData());
         } catch (Exception e) {
             e.printStackTrace();
@@ -224,7 +273,7 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
             queryMap.put("namespace", namespace.getNamespaceId());
             queryMap.put("namespaceShowName", namespace.getName());
             queryMap.put("namespaceDesc", namespace.getDesc());
-            HttpResult<String> result = httpClient.put(url.concat(NAMESPCE_URL), null, queryMap);
+            HttpResult<String> result = httpClient.put(url.concat(NAMESPCE_URL).concat("?accessToken=").concat(getToken(config)), null, queryMap);
             return Boolean.TRUE.toString().equals(result.getData());
         } catch (Exception e) {
             e.printStackTrace();
@@ -238,7 +287,7 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
         try {
             Map<String, Object> queryMap = new HashMap<>();
             queryMap.put("namespaceId", namespace.getNamespaceId());
-            HttpResult<String> result = httpClient.delete(url.concat(NAMESPCE_URL), null, queryMap);
+            HttpResult<String> result = httpClient.delete(url.concat(NAMESPCE_URL).concat("?accessToken=").concat(getToken(config)), null, queryMap);
             return Boolean.TRUE.toString().equals(result.getData());
         } catch (Exception e) {
             e.printStackTrace();
@@ -247,15 +296,15 @@ public class NacosRegistryOpenApi extends RegistryOpenApiAdaptor {
     }
 
     @Override
-    public List<Namespace> allNamespaces(RegistryConfig config){
+    public List<Namespace> allNamespaces(RegistryConfig config) {
         List namespaceList = new ArrayList();
         String url = selectOne(config);
         try {
-            HttpResult<String> result = httpClient.get(url.concat(NAMESPCE_URL), null, null);
+            HttpResult<String> result = httpClient.get(url.concat(NAMESPCE_URL).concat("?accessToken=").concat(getToken(config)), null, null);
             Map map = JSONSerializer.deserializeStr(Map.class, result.getData());
-            List<Map> namespaceMapList =(List) map.get("data");
-            for(Map nsp:namespaceMapList){
-                Namespace namespace =new Namespace();
+            List<Map> namespaceMapList = (List) map.get("data");
+            for (Map nsp : namespaceMapList) {
+                Namespace namespace = new Namespace();
                 namespace.setNamespaceId((String) nsp.get("namespace"));
                 namespace.setName((String) nsp.get("namespaceShowName"));
                 namespace.setRegistryId(Arrays.asList(config.getRegistryId()));

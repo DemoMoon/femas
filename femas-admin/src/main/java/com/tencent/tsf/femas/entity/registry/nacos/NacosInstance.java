@@ -19,6 +19,8 @@ package com.tencent.tsf.femas.entity.registry.nacos;
 
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.tencent.tsf.femas.common.util.Result;
+
 import java.util.List;
 import java.util.Map;
 
@@ -27,7 +29,7 @@ import java.util.Map;
  * @Date: 2021/5/7 16:28
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class NacosInstance {
+public class NacosInstance <T> extends Result<T> {
 
     private List<Instance> list;
 

@@ -105,7 +105,7 @@ public class MysqlDataOperation implements DataOperation {
         int res = 0;
         if(StringUtils.isEmpty(registryConfig.getRegistryId())){
             registryConfig.setRegistryId(REGISTRY_ID_PREFIX.concat(iidGeneratorService.nextHashId()));
-            res = manager.update("insert into registry_config(registry_id,registry_cluster,registry_name,registry_type,user_name,password) values(?,?,?,?,?,?)",
+            res = manager.update("insert into registry_config(registry_id,registry_cluster,registry_name,registry_type,username,password) values(?,?,?,?,?,?)",
                         registryConfig.getRegistryId(),
                         registryConfig.getRegistryCluster(),
                         registryConfig.getRegistryName(),
